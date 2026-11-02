@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Add Selection to Chat",
+    "description": "Right-click a text selection in the document preview to insert it into the current Session's composer."
+  }
+}

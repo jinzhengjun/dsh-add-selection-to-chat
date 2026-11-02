@@ -1,0 +1,7 @@
+# dsh-add-selection-to-chat bundle layer.
+#
+# Selected through the profile's `dsh.profile.bundles` list; the row id stays
+# stable so profile patches can target it.
+- insert:
+    - id: add-selection-to-chat
+      name: 'dsh-add-selection-to-chat'

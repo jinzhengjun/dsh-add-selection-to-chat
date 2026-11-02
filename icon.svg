@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Add selection to chat">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#4D6BFE"/>
+  <g stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.95">
+    <line x1="16" y1="20" x2="44" y2="20"/>
+    <line x1="16" y1="30" x2="34" y2="30"/>
+    <line x1="16" y1="40" x2="28" y2="40"/>
+  </g>
+  <g>
+    <rect x="30" y="34" width="26" height="20" rx="6" fill="#ffffff"/>
+    <path d="M36 54 L36 60 L43 54 Z" fill="#ffffff"/>
+    <g stroke="#4D6BFE" stroke-width="3" stroke-linecap="round">
+      <line x1="43" y1="40" x2="43" y2="48"/>
+      <line x1="39" y1="44" x2="47" y2="44"/>
+    </g>
+  </g>
+</svg>
