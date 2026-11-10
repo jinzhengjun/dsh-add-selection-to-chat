@@ -1,8 +1,8 @@
 {
   "name": "dsh-add-selection-to-chat",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
-  "description": "在 DSH 文档预览中右击选中文本，快捷插入到对话输入框。",
+  "description": "在 DSH 文档预览中右击选中文本，快捷插入到对话输入框；在文件树中右击文件或文件夹可删除。",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -21,6 +21,10 @@
     "icon.svg",
     "README.md"
   ],
+  "scripts": {
+    "test": "node test/smoke.mjs && node test/delete.mjs && node test/host.mjs",
+    "check": "node --check index.js && node --check client.js"
+  },
   "license": "MIT",
   "dsh": {
     "bundle": {

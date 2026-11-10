@@ -15,221 +15,13 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
+import { Node, makeDocument, makeWindow } from './dom.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = await readFile(join(here, '..', 'client.js'), 'utf8');
 
-// ---- tiny DOM ---------------------------------------------------------------
-
-/** Attribute and `.class` selector matcher: `[a]`, `[a="v"]`, `tag[a="v"]`, `.cls`. */
-function matches(node, selector) {
-  if (!node || node.nodeType !== 1) return false;
-  let rest = String(selector).trim();
-  if (rest.startsWith('.')) {
-    const classes = String(node.className || '').split(/\s+/);
-    return classes.includes(rest.slice(1));
-  }
-  const tag = /^([a-zA-Z][\w-]*)/.exec(rest);
-  if (tag) {
-    if (node.tagName.toLowerCase() !== tag[1].toLowerCase()) return false;
-    rest = rest.slice(tag[1].length);
-  }
-  const parts = rest.match(/\[[^\]]*\]/g) || [];
-  for (const part of parts) {
-    const body = part.slice(1, -1);
-    const eq = body.indexOf('=');
-    if (eq < 0) {
-      if (!(body in node.attrs)) return false;
-      continue;
-    }
-    const name = body.slice(0, eq).trim();
-    let value = body.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    if (node.attrs[name] !== value) return false;
-  }
-  return true;
-}
-
-class Node {
-  constructor(tag, nodeType = 1) {
-    this.tagName = String(tag).toUpperCase();
-    this.nodeType = nodeType;
-    this.children = [];
-    this.parentNode = null;
-    this.attrs = {};
-    this.style = {};
-    this.className = '';
-    this.listeners = new Map();
-    this._text = '';
-  }
-
-  get parentElement() {
-    return this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null;
-  }
-
-  get textContent() {
-    if (this.children.length > 0) return this.children.map((child) => child.textContent).join('');
-    return this._text;
-  }
-
-  set textContent(value) {
-    this._text = String(value);
-    this.children = [];
-  }
-
-  setAttribute(name, value) {
-    this.attrs[name] = String(value);
-  }
-
-  getAttribute(name) {
-    return name in this.attrs ? this.attrs[name] : null;
-  }
-
-  removeAttribute(name) {
-    delete this.attrs[name];
-  }
-
-  appendChild(child) {
-    child.parentNode = this;
-    this.children.push(child);
-    return child;
-  }
-
-  removeChild(child) {
-    const index = this.children.indexOf(child);
-    if (index >= 0) this.children.splice(index, 1);
-    child.parentNode = null;
-    return child;
-  }
-
-  addEventListener(type, handler) {
-    if (!this.listeners.has(type)) this.listeners.set(type, []);
-    this.listeners.get(type).push(handler);
-  }
-
-  removeEventListener(type, handler) {
-    const list = this.listeners.get(type);
-    if (!list) return;
-    const index = list.indexOf(handler);
-    if (index >= 0) list.splice(index, 1);
-  }
-
-  dispatch(type, event) {
-    for (const handler of [...(this.listeners.get(type) ?? [])]) handler(event);
-  }
-
-  contains(node) {
-    let current = node;
-    while (current) {
-      if (current === this) return true;
-      current = current.parentNode;
-    }
-    return false;
-  }
-
-  querySelector(selector) {
-    const walk = (node) => {
-      for (const child of node.children) {
-        if (matches(child, selector)) return child;
-        const nested = walk(child);
-        if (nested) return nested;
-      }
-      return null;
-    };
-    return walk(this);
-  }
-
-  querySelectorAll(selector) {
-    const out = [];
-    const walk = (node) => {
-      for (const child of node.children) {
-        if (matches(child, selector)) out.push(child);
-        walk(child);
-      }
-    };
-    walk(this);
-    return out;
-  }
-
-  closest(selector) {
-    let current = this;
-    while (current) {
-      if (matches(current, selector)) return current;
-      current = current.parentNode;
-    }
-    return null;
-  }
-
-  getBoundingClientRect() {
-    return { width: 220, height: 64 };
-  }
-
-  focus() {
-    this.focused = true;
-  }
-}
-
-function makeDocument() {
-  return {
-    nodeType: 9,
-    head: new Node('head'),
-    body: new Node('body'),
-    listeners: new Map(),
-    createElement(tag) {
-      return new Node(tag);
-    },
-    addEventListener(type, handler) {
-      if (!this.listeners.has(type)) this.listeners.set(type, []);
-      this.listeners.get(type).push(handler);
-    },
-    removeEventListener(type, handler) {
-      const list = this.listeners.get(type);
-      if (!list) return;
-      const index = list.indexOf(handler);
-      if (index >= 0) list.splice(index, 1);
-    },
-    dispatch(type, event) {
-      for (const handler of [...(this.listeners.get(type) ?? [])]) handler(event);
-    },
-    querySelector(selector) {
-      return this.head.querySelector(selector) || this.body.querySelector(selector);
-    },
-  };
-}
-
-function makeWindow(document) {
-  return {
-    document,
-    innerWidth: 1200,
-    innerHeight: 800,
-    listeners: new Map(),
-    timers: [],
-    addEventListener(type, handler) {
-      if (!this.listeners.has(type)) this.listeners.set(type, []);
-      this.listeners.get(type).push(handler);
-    },
-    removeEventListener(type, handler) {
-      const list = this.listeners.get(type);
-      if (!list) return;
-      const index = list.indexOf(handler);
-      if (index >= 0) list.splice(index, 1);
-    },
-    dispatch(type, event) {
-      for (const handler of [...(this.listeners.get(type) ?? [])]) handler(event);
-    },
-    setTimeout(fn, ms) {
-      this.timers.push({ fn, ms });
-      return this.timers.length;
-    },
-    getSelection() {
-      return this.selection ?? null;
-    },
-  };
-}
-
 // ---- load the real bundle ---------------------------------------------------
+
 
 const document = makeDocument();
 const window = makeWindow(document);
@@ -244,7 +36,7 @@ assert.equal(loaded?.id, 'dsh-add-selection-to-chat', 'bundle registers under it
 const exported = loaded.factory((name) => {
   throw new Error(`unexpected require(${name})`);
 });
-assert.deepEqual(exported.inject, ['sessions', 'conversation'], 'declares its client services');
+assert.deepEqual(exported.inject, ['sessions', 'conversation', 'contextMenus'], 'declares its client services');
 
 // ---- fixtures ---------------------------------------------------------------
 
@@ -306,6 +98,14 @@ const codeLines = ['const a = 1', 'const b = 2', 'const c = 3'].map((content) =>
   return span;
 });
 
+// a file in a subfolder: the payload header must be root-relative, not the bare name
+const nestedBody = previewPane('C:\\workspace\\sub\\dir\\deep.ts');
+const nestedPage = new Node('pre');
+nestedPage.setAttribute('data-textpreview-page', '1');
+nestedBody.appendChild(nestedPage);
+const row1 = textLine(nestedPage, 1, 'export const deep = 1;');
+const row2 = textLine(nestedPage, 2, 'export const deeper = 2;');
+
 // a renderer with no line markup at all (Markdown body)
 const proseBody = previewPane('C:\\workspace\\notes.md');
 const paragraph = new Node('p');
@@ -351,8 +151,25 @@ const shellCalls = [];
 const ctx = {
   sessions: {
     list: {
-      // Deliberately a different Session than the one the composer renders.
-      getSnapshot: () => ({ byId: { 'session-catalog': { sessionId: 'session-catalog', retainedBy: { mainView: 1 } } } }),
+      // Deliberately a different Session than the one the composer renders,
+      // but it carries the workspace root (header.cwd) the payload header
+      // relativizes against.
+      getSnapshot: () => ({
+        byId: {
+          'session-catalog': {
+            sessionId: 'session-catalog',
+            header: { cwd: 'C:\\workspace' },
+            retainedBy: { mainView: 1 },
+          },
+          // The rendered Session also carries a workspace root, so the payload
+          // header can relativize against the Session it is inserting into.
+          'session-on-screen': {
+            sessionId: 'session-on-screen',
+            header: { cwd: 'C:\\workspace' },
+            retainedBy: {},
+          },
+        },
+      }),
     },
   },
   conversation: {
@@ -369,10 +186,25 @@ const ctx = {
     this.effects.push(dispose);
     return dispose;
   },
+  // Mirrors the shell: contextMenus is declared in exports.inject, so the
+  // guarded facade answers it as a plain property (the path our code now takes).
+  contextMenus: {
+    registrations: [],
+    register(input) { this.registrations.push(input); return () => {}; },
+    notify() {},
+  },
 };
 
 exported.apply(ctx);
-assert.equal(ctx.effects.length, 1, 'registers one disposable effect');
+// The preview menu registers one effect; each of the two delete providers
+// (file + directory) registers one more — 3 total, no retry timer needed.
+assert.equal(ctx.effects.length, 3, 'registers one disposable effect per capability');
+assert.equal(ctx.contextMenus.registrations.length, 2, 'registers the file and directory delete providers');
+assert.deepEqual(
+  ctx.contextMenus.registrations.map((r) => r.target).sort(),
+  ['directory', 'file'],
+  'delete providers target file and directory',
+);
 
 function rightClick(target) {
   const event = {
@@ -424,7 +256,7 @@ assert.equal(insertions.length, 1, 'one insertion');
 assert.equal(
   insertions[0].text,
   '\ncampus.html（第 12-14 行）\nline twelve\nline thirteen\nline fourteen',
-  'payload = separator + file name + (第 a-b 行) + selected text',
+  'payload = separator + root-relative path + (第 a-b 行) + selected text',
 );
 assert.deepEqual(insertions[0].span, { start: 5, end: 5, draftRev: 5 }, 'appends at the end of the draft, ignoring the stale caret at 2');
 assert.equal(composerFocused, true, 'composer is focused after insertion');
@@ -452,6 +284,26 @@ assert.equal(
   '\nnotes.md\n第一段文字\n第二段文字',
   'no line range is invented',
 );
+
+// 4b. nested file: the payload header is relative to the project root, not the bare name
+select({ text: 'export const deep = 1;\nexport const deeper = 2;', startNode: row1.children[0], endNode: row2.children[0], ancestor: nestedPage });
+rightClick(row1);
+assert.equal(metaText(), 'deep.ts · 第 1-2 行', 'menu meta keeps the short file name');
+item().dispatch('click', {});
+assert.equal(
+  insertions.at(-1).text,
+  '\nsub/dir/deep.ts（第 1-2 行）\nexport const deep = 1;\nexport const deeper = 2;',
+  'nested file payload carries the path relative to the project root',
+);
+
+// workspaceRelativePath unit behavior: no root / outside root are no-ops
+const { workspaceRelativePath, workspaceRootOf } = exported.__internals;
+assert.equal(workspaceRelativePath('C:\\workspace\\a\\b.ts', 'C:\\workspace'), 'a/b.ts', 'absolute under root becomes relative');
+assert.equal(workspaceRelativePath('c:/workspace/a/b.ts', 'C:\\workspace'), 'a/b.ts', 'prefix match is case-insensitive');
+assert.equal(workspaceRelativePath('already/relative.ts', 'C:\\workspace'), 'already/relative.ts', 'a path not under the root is left unchanged');
+assert.equal(workspaceRelativePath('C:\\workspace\\a.ts', ''), 'C:\\workspace\\a.ts', 'an unknown root is a no-op');
+assert.equal(workspaceRootOf(ctx.sessions, 'session-catalog'), 'C:\\workspace', 'the catalog row carries the workspace root');
+assert.equal(workspaceRootOf(ctx.sessions, 'nope'), undefined, 'an unknown Session has no root');
 
 // 5. draft already ends with a newline: no doubled separator
 stateSnapshot = { draft: 'hello\n', phase: 'plain' };
